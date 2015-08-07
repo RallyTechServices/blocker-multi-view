@@ -22,7 +22,7 @@ Ext.define("blocker-multi-view", {
     fetchList: ['Feature', 'FormattedID', 'Project','Release', 'Iteration', 'Tags', 'Blocked', 
                 'BlockedReason', 'c_BlockerCategory', 'c_BlockerOwnerFirstLast', 'c_BlockerCreationDate', 
                 'c_BlockerState','c_BlockerEstimatedResolutionDate','age','Name','RevisionHistory',
-                'ObjectID'],
+                'ObjectID','CreationDate'],
     onTimeboxScopeChange: function(scope) {
         if (this.down('#blocker-tabs')){
             this.down('#blocker-tabs').destroy();
@@ -30,7 +30,9 @@ Ext.define("blocker-multi-view", {
         this._fetchData(scope.getRecord());
     },
     _fetchData: function(release_record){
-
+        var me = this;
+        this.setLoading(true);
+        
         var release_filter = {
             property: 'Release',
             value: ''
@@ -56,7 +58,7 @@ Ext.define("blocker-multi-view", {
                     failure: function(msg){
                         Ext.Msg.alert(msg);
                     }
-                });
+                }).always(function() { me.setLoading(false) } );
             }
         });
     },

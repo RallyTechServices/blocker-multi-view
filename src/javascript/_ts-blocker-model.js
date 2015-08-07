@@ -60,18 +60,22 @@ Ext.define('Rally.technicalservices.BlockerModelBuilder',{
         this._loadRecordsWithAPromise('Revision',fields,filters,sorters, {limit: 1, pageSize: 1}).then({
             scope: this,
             success: function(records) {
+                
+                var blocked_date = this.get('CreationDate'); // use creation date if no blocked date
+                
                 if ( records.length > 0 ) {
-                    var blocked_date = records[0].get('CreationDate');
-                    var today = new Date();
-                    var age = Rally.technicalservices.util.Utilities.daysBetween(blocked_date, today, true);
-                    
-                    this.set('__Age',age);
-                    this.set('__BlockerCreationDate', blocked_date);
-                    deferred.resolve();
+                    blocked_date = records[0].get('CreationDate');
                 } else {
-                    console.error('No revision has "BLOCKED changed from [false] to [true]" in the description');
+                    // later might want to make sure this thing is blocked
+                    console.warn(this.get('FormattedID') +  ': No revision has "BLOCKED changed from [false] to [true]" in the description');
                     deferred.resolve();
                 }
+                var today = new Date();
+                var age = Rally.technicalservices.util.Utilities.daysBetween(blocked_date, today, true);
+                
+                this.set('__Age',age);
+                this.set('__BlockerCreationDate', blocked_date);
+                deferred.resolve();
             },
             failure: function(msg) {
                 deferred.reject(msg);

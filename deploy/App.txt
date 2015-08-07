@@ -3,11 +3,11 @@
 <head>
     <title>Blocker Multi View</title>
     <!--  (c) 2015 Rally Software Development Corp.  All Rights Reserved. -->
-    <!--  Build Date: Fri Aug 07 2015 11:52:01 GMT-0700 (PDT) -->
+    <!--  Build Date: Fri Aug 07 2015 12:07:55 GMT-0700 (PDT) -->
     
     <script type="text/javascript">
-        var APP_BUILD_DATE = "Fri Aug 07 2015 11:52:01 GMT-0700 (PDT)";
-        var CHECKSUM = 27967148417;
+        var APP_BUILD_DATE = "Fri Aug 07 2015 12:07:55 GMT-0700 (PDT)";
+        var CHECKSUM = 28490925382;
     </script>
     
     <script type="text/javascript" src="/apps/2.0/sdk.js"></script>
@@ -200,18 +200,22 @@ Ext.define('Rally.technicalservices.BlockerModelBuilder',{
         this._loadRecordsWithAPromise('Revision',fields,filters,sorters, {limit: 1, pageSize: 1}).then({
             scope: this,
             success: function(records) {
+                
+                var blocked_date = this.get('CreationDate'); // use creation date if no blocked date
+                
                 if ( records.length > 0 ) {
-                    var blocked_date = records[0].get('CreationDate');
-                    var today = new Date();
-                    var age = Rally.technicalservices.util.Utilities.daysBetween(blocked_date, today, true);
-                    
-                    this.set('__Age',age);
-                    this.set('__BlockerCreationDate', blocked_date);
-                    deferred.resolve();
+                    blocked_date = records[0].get('CreationDate');
                 } else {
-                    console.error('No revision has "BLOCKED changed from [false] to [true]" in the description');
+                    // later might want to make sure this thing is blocked
+                    console.warn(this.get('FormattedID') +  ': No revision has "BLOCKED changed from [false] to [true]" in the description');
                     deferred.resolve();
                 }
+                var today = new Date();
+                var age = Rally.technicalservices.util.Utilities.daysBetween(blocked_date, today, true);
+                
+                this.set('__Age',age);
+                this.set('__BlockerCreationDate', blocked_date);
+                deferred.resolve();
             },
             failure: function(msg) {
                 deferred.reject(msg);
@@ -1004,7 +1008,7 @@ Ext.define("blocker-multi-view", {
     fetchList: ['Feature', 'FormattedID', 'Project','Release', 'Iteration', 'Tags', 'Blocked', 
                 'BlockedReason', 'c_BlockerCategory', 'c_BlockerOwnerFirstLast', 'c_BlockerCreationDate', 
                 'c_BlockerState','c_BlockerEstimatedResolutionDate','age','Name','RevisionHistory',
-                'ObjectID'],
+                'ObjectID','CreationDate'],
     onTimeboxScopeChange: function(scope) {
         if (this.down('#blocker-tabs')){
             this.down('#blocker-tabs').destroy();
@@ -1012,7 +1016,9 @@ Ext.define("blocker-multi-view", {
         this._fetchData(scope.getRecord());
     },
     _fetchData: function(release_record){
-
+        var me = this;
+        this.setLoading(true);
+        
         var release_filter = {
             property: 'Release',
             value: ''
@@ -1038,7 +1044,7 @@ Ext.define("blocker-multi-view", {
                     failure: function(msg){
                         Ext.Msg.alert(msg);
                     }
-                });
+                }).always(function() { me.setLoading(false) } );
             }
         });
     },
