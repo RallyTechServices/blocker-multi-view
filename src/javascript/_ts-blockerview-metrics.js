@@ -61,11 +61,10 @@ Ext.define('Rally.technicalservices.blockerview.Metrics', {
             noneText = "No Category",
             category_count = {},
             owners = {};
-        console.log('store',store);
+
         store.clearFilter(false, true);
         _.each(store.getRecords(), function(r){
              var category = r.get('c_BlockerCategory') || noneText;
-            console.log('category',category);
              category_count[category] = (category_count[category] || 0) + 1;
              owners[category] = r.get('blockerCategoryOwner') || '';
          }, this);

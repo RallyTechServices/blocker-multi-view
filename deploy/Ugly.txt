@@ -3,10 +3,10 @@
 <head>
     <title>Blocker Multi View</title>
     <!--  (c) 2015 Rally Software Development Corp.  All Rights Reserved. -->
-    <!--  Build Date: Fri Aug 07 2015 10:25:52 GMT-0600 (MDT) -->
+    <!--  Build Date: Fri Aug 07 2015 11:52:01 GMT-0700 (PDT) -->
     
     <script type="text/javascript">
-        var APP_BUILD_DATE = "Fri Aug 07 2015 10:25:52 GMT-0600 (MDT)";
+        var APP_BUILD_DATE = "Fri Aug 07 2015 11:52:01 GMT-0700 (PDT)";
         var CHECKSUM = [%= checksum %];
     </script>
     
