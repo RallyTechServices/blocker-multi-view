@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Blocker Multi View</title>
+    <!--  (c) 2015 Rally Software Development Corp.  All Rights Reserved. -->
+    <!--  Build Date: Fri Aug 07 2015 10:25:52 GMT-0600 (MDT) -->
+    
+    <script type="text/javascript">
+        var APP_BUILD_DATE = "Fri Aug 07 2015 10:25:52 GMT-0600 (MDT)";
+        var CHECKSUM = [%= checksum %];
+    </script>
+    
+    <script type="text/javascript" src="/apps/2.0/sdk.js"></script>
+
+    <script type="text/javascript">
+        Rally.onReady(function() {
+            
+            
+               Rally.launchApp('blocker-multi-view', {
+                   name: 'Blocker Multi View'
+               });
+        });
+    </script>
+    
+    <style type="text/css">
+
+.app {
+}
+.tsinfolink {
+    position:absolute;
+    right:0px;
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    text-align: center;
+    color: white;
+    background: #C0C0C0;
+    border-style: solid;
+    border-width: 1px;
+    margin-top: 25px;
+    margin-right: 5px;
+    cursor: pointer;
+}
+.x-tab-active{
+    background-color: white!important;
+}
+.x-tab-bar .x-tab-default {
+    background-image: none;
+    background-color: #999;
+    border-color: #666;
+    border-radius: 0;
+}
+.x-tab-inner {
+    color: #222;
+    text-transform: none!important;
+    width: 150px!important;
+    font-size: 11px!important;
+    font-family: NotoSans, Helvetica, Arial;
+    white-space: normal;
+    word-wrap: break-word;
+
+}
+.flagged-10 {
+    background-color: #FF0000!important;
+}
+.flagged-9 {
+    background-color: #FF3300!important;
+}
+.flagged-8 {
+    background-color: #FF6600!important;
+}
+.flagged-7 {
+    background-color: #FF9900!important;
+}
+.flagged-6 {
+    background-color: #FFCC00!important;
+}
+.flagged-5 {
+    background-color: #FFFF00!important;
+}
+.flagged-4 {
+    background-color: #CCFF00!important;
+}
+.flagged-3 {
+    background-color: #99FF00!important;
+}
+.flagged-2 {
+    background-color: #66FF00!important;
+}
+.flagged-1 {
+    background-color: #33FF00!important;
+}
+.flagged-0 {
+    background-color: #00FF00!important;
+}
+
+    </style>
+
+</head>
+<body></body>
+</html>
