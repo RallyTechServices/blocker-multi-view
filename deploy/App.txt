@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Blocker Multi View</title>
+    <!--  (c) 2015 Rally Software Development Corp.  All Rights Reserved. -->
+    <!--  Build Date: Fri Aug 07 2015 10:25:52 GMT-0600 (MDT) -->
+    
+    <script type="text/javascript">
+        var APP_BUILD_DATE = "Fri Aug 07 2015 10:25:52 GMT-0600 (MDT)";
+        var CHECKSUM = 24070828477;
+    </script>
+    
+    <script type="text/javascript" src="/apps/2.0/sdk.js"></script>
+
+    <script type="text/javascript">
+        Rally.onReady(function() {
+             
+/**
+ * A link that pops up a version dialog box
+ */
+
+Ext.define('Rally.technicalservices.InfoLink',{
+    extend: 'Ext.Component',
+    alias: 'widget.tsinfolink',
+    
+    /**
+     * @cfg {String} informationHtml
+     * Additional text to be displayed on the popup dialog (for exmaple,
+     * to add a description of the app's use or functionality)
+     */
+    informationHtml: null,
+    
+    /**
+     * 
+     * cfg {String} title
+     * The title for the dialog box
+     */
+     title: "Build Information",
+    
+    renderTpl: "<div id='{id}-infolinkWrap' class='tsinfolink'>i</div>",
+
+    initComponent: function() {
+        this.callParent(arguments);
+       
+    },
+    
+    onRender: function() {
+        this.callParent(arguments);
+        this.mon(this.el,'click',this.onClick,this);
+    },
+    _generateChecksum: function(string){
+        var chk = 0x12345678,
+            i;
+        string = string.replace(/var CHECKSUM = .*;/,"");
+        string = string.replace(/\s/g,"");  //Remove all whitespace from the string.
+        
+        for (i = 0; i < string.length; i++) {
+            chk += (string.charCodeAt(i) * i);
+        }
+    
+        return chk;
+    },
+    _checkChecksum: function(container) {
+        var me = this;
+        Ext.Ajax.request({
+            url: document.URL,
+            params: {
+                id: 1
+            },
+            success: function (response) {
+                text = response.responseText;
+                if ( CHECKSUM ) {
+                    if ( CHECKSUM !== me._generateChecksum(text) ) {
+                        console.log("Checksums don't match!");
+                        if ( me.dialog ) {
+                            me.dialog.add({xtype:'container',html:'Checksums do not match'});
+                        }
+                    }
+                }
+            }
+        });
+    },
+    onClick: function(e) {
+        var me = this;
+        this._checkChecksum(this);
+        
+        var dialog_items = [];
+        
+        if ( this.informationHtml ) {
+            dialog_items.push({
+                xtype:'container',
+                html: this.informationHtml
+            });
+        }
+                
+        dialog_items.push({
+            xtype:'container',
+            html:"This app was created by the Rally Technical Services Team."
+        });
+        
+        if ( APP_BUILD_DATE ) {
+            dialog_items.push({
+                xtype:'container',
+                html:'Build date/time: ' + APP_BUILD_DATE
+            });
+        }
+        
+        if (this.dialog){this.dialog.destroy();}
+        this.dialog = Ext.create('Rally.ui.dialog.Dialog',{
+            defaults: { padding: 5, margin: 5 },
+            closable: true,
+            draggable: true,
+            title: me.title,
+            items: dialog_items
+        });
+        this.dialog.show();
+    }
+});
+
+/*
+ */
+Ext.define('Rally.technicalservices.Logger',{
+    constructor: function(config){
+        Ext.apply(this,config);
+    },
+    log: function(args){
+        var timestamp = "[ " + Ext.util.Format.date(new Date(), "Y-m-d H:i:s.u") + " ]";
+        //var output_args = arguments;
+        //output_args.unshift( [ "[ " + timestamp + " ]" ] );
+        //output_args = Ext.Array.push(output_args,arguments);
+        
+        var output_args = [];
+        output_args = Ext.Array.push(output_args,[timestamp]);
+        output_args = Ext.Array.push(output_args, Ext.Array.slice(arguments,0));
+
+        window.console && console.log.apply(console,output_args);
+    }
+
+});
+
+Ext.define('Rally.technicalservices.BlockerModelBuilder',{
+    singleton: true,
+    getModel: function(modelType){
+        var deferred = Ext.create('Deft.Deferred');
+        Rally.data.ModelFactory.getModel({
+            type: modelType,
+            success: function(model) {
+                deferred.resolve(model);
+            }
+        });
+        return deferred;
+    },
+    build: function(model, categoryLeaderMapping) {
+
+        return Ext.define('Rally.technicalservices.model.BlockerModel', {
+            extend: model,
+            fields: [{
+                name: 'age',
+                convert: function (value, record) {
+                    var creation_date = record.get('c_BlockerCreationDate'),
+                        age = null;
+
+                    if (creation_date) {
+                        age = Rally.technicalservices.util.Utilities.daysBetween(creation_date, new Date(), true);
+                    }
+                    return age;
+                },
+                displayName: 'Age (in Days)'
+            },{
+                name: 'blockerCategoryOwner',
+                convert: function(value, record){
+                    var category = record.get('c_BlockerCategory');
+                    if (category){
+                        return categoryLeaderMapping[category] || null;
+                    }
+                    return null;
+                },
+                displayName: 'Blocker Category Owner'
+            }]
+        });
+    }
+});
+
+Ext.define('Rally.technicalservices.blockerview', {
+    extend: 'Ext.panel.Panel',
+    alias: 'widget.tsblockerview',
+    padding: 15,
+    config: {},
+
+    constructor: function (config) {
+        this.mergeConfig(config);
+        this.callParent([this.config]);
+        this.title = Ext.String.format(this.titleText, this.getResultCount(config.currentStore));
+        this.tooltip = this.tooltipText;
+    },
+    renderPanel: function(store, itemId, columnCfgs){
+        var context = this.context,
+            height =  Math.max(Rally.getApp().getHeight() * .90, 500),
+            pageSize = 200;
+
+        if (this.getResultCount(store) < pageSize){
+            showPagingToolbar = false;
+        }
+
+        var grid = this.add({
+            xtype: 'rallygrid',
+            itemId: itemId,
+            context: context,
+            showRowActionsColumn: false,
+            enableRanking: false,
+            enableBulkEdit: false,
+            store: store,
+            pageSize: pageSize,
+            showPagingToolbar: showPagingToolbar,
+            columnCfgs: columnCfgs,
+            height: height
+        });
+        return grid;
+    },
+    getResultCount: function(store){
+        var count = 0;
+        _.each(store.getRecords(), function(r){
+            if (this._filterFn(r)){
+                count++;
+            }
+        }, this);
+        return count;
+    },
+    _filterFn: function(r){
+        return true;
+    },
+    _getMaxAge: function(store){
+        var max_age = 0;
+        _.each(store.getRecords(), function(r){
+            if (r.get('age') && r.get('age') > max_age){
+                max_age = r.get('age');
+            }
+        });
+        return max_age;
+    },
+    _ageRenderer: function(v, m){
+        m.style="text-align:center;";
+        if (v){
+            var n = Math.floor(v/this.maxAge * 10),
+                color_cls = 'flagged-' + n;
+            m.tdCls = color_cls;
+            return v;
+        }
+        return 'Blocker Creation Date Unavailable';
+    }
+});
+
+Ext.define('Rally.technicalservices.blockerview.Category', {
+    extend: 'Rally.technicalservices.blockerview',
+    alias: 'widget.tsblockerviewcategory',
+
+    config: {
+        currentStore: null,
+        id: 'grid-category',
+        titleText: 'Category View ({0})',
+        tooltipText: 'Blockers listed by Blocker Category and corresponding category owner'
+    },
+    constructor: function (config) {
+        this.mergeConfig(config);
+        this.callParent([this.config]);
+        this.maxAge = this._getMaxAge(config.currentStore);
+
+    },
+    showPanel: function(){
+        var grid = this.down('#grid-category');
+        if (!grid) {
+            grid = this.renderPanel(this.currentStore, this.id, this.getColumnCfgs());
+        }
+        grid.getStore().clearFilter(false, true);
+        grid.getStore().sort([{
+            property: 'c_BlockerCategory',
+            direction: 'ASC'
+        },{
+            property: 'age',
+            direction: 'DESC'
+        }]);
+        grid.getStore().filterBy(this._filterFn, this);
+    },
+    _filterFn: function(item){
+        console.log('blocker category', item.get('c_BlockerCategory').length);
+        return (item.get('c_BlockerCategory') && item.get('c_BlockerCategory').length > 0);
+    },
+    getColumnCfgs: function(){
+        return [{
+            dataIndex: 'c_BlockerCategory',
+            text: 'Blocker Category (US)'
+        },{
+            dataIndex: 'blockerCategoryOwner',
+            text: 'Category Owner'
+        },{
+            dataIndex: 'Project',
+            text: 'Team'
+        },{
+            dataIndex: 'BlockedReason',
+            text: 'Blocker Reason'
+        },{
+            dataIndex: 'c_BlockerOwnerFirstLast',
+            text: 'Blocker Owner'
+        },{
+            dataIndex: 'FormattedID',
+            text: 'User Story ID'
+        },{
+            dataIndex: 'Name',
+            text: 'User Story'
+        },{
+            dataIndex: 'Feature',
+            text: 'Feature'
+        },{
+            dataIndex: 'c_BlockerCreationDate',
+            text: 'Blocker Creation Date'
+        },{
+            dataIndex: 'age',
+            text: 'Age (in days)',
+            scope: this,
+            renderer: this._ageRenderer
+        }];
+    }
+});
+Ext.define('Rally.technicalservices.blockerview.Current', {
+    extend: 'Rally.technicalservices.blockerview',
+    alias: 'widget.tsblockerviewcurrent',
+
+    config: {
+        currentStore: null,
+        id: 'grid-current',
+        titleText: 'Current Blocker Data ({0})',
+        tooltipText: 'Raw Blocker Data'
+
+    },
+    constructor: function (config) {
+        this.mergeConfig(config);
+        this.callParent([this.config]);
+    },
+    showPanel: function(){
+        var grid = this.down('#grid-current');
+        if (!grid) {
+           grid =  this.renderPanel(this.currentStore, this.id, this.getColumnCfgs());
+        }
+        grid.getStore().clearFilter(false, true);
+    },
+    getColumnCfgs: function(){
+        return [{
+            dataIndex: 'Feature',
+            text: 'Feature'
+        },{
+            dataIndex: 'FormattedID',
+            text: 'User Story ID'
+        },{
+            dataIndex: 'Name',
+            text: 'User Story'
+        },{
+            dataIndex: 'Project',
+            text: 'Team'
+        }, {
+            dataIndex: 'Release',
+            text: 'Release'
+        },{
+            dataIndex: 'Iteration',
+            text: 'Iteration'
+        },{
+            dataIndex: 'Tags',
+            text: 'Tags'
+        },{
+            dataIndex: 'Blocked',
+            text:'Blocked'
+        },{
+            dataIndex: 'BlockedReason',
+            text: 'Blocker Reason'
+        },{
+            dataIndex: 'c_BlockerCategory',
+            text: 'Blocker Category (US)'
+        },{
+            dataIndex: 'c_BlockerOwnerFirstLast',
+            text: 'Blocker Owner'
+        },{
+            dataIndex: 'c_BlockerCreationDate',
+            text: 'Blocker Creation Date'
+        },{
+            dataIndex: 'c_BlockerState',
+            text: 'Blocker State'
+        }, {
+            dataIndex: 'c_BlockerEstimatedResolutionDate',
+            text: 'Blocker Estimated Resolution Date'
+        },{
+            dataIndex: 'age',
+            text: 'Age (in days)'
+        }];
+    }
+});
+
+Ext.define('Rally.technicalservices.blockerview.Leadership', {
+    extend: 'Rally.technicalservices.blockerview',
+    alias: 'widget.tsblockerviewleadership',
+
+    config: {
+        id: 'grid-leadership',
+        currentStore: null,
+        titleText: 'Leadership View ({0})',
+        tooltipText: 'Blockers aged > 5 business days and Blockers with Leadership team members listed as Blocker Owners'
+
+    },
+    constructor: function (config) {
+        this.mergeConfig(config);
+        this.callParent([this.config]);
+        this.maxAge = this._getMaxAge(config.currentStore);
+    },
+    showPanel: function(){
+        var grid = this.down('#grid-leadership');
+        if (!grid) {
+            grid = this.renderPanel(this.currentStore, this.id, this.getColumnCfgs());
+
+        }
+        grid.getStore().clearFilter(false, true);
+        grid.getStore().sort([{
+            property: 'age',
+            direction: 'DESC'
+        }]);
+        grid.getStore().filterBy(this._filterFn, this);
+    },
+
+    _filterFn: function(item){
+
+                return (item.get('blockerCategoryOwner') && item.get('age') && item.get('age') > 5);
+    },
+    getColumnCfgs: function(){
+
+        return [{
+            dataIndex: 'age',
+            text: 'Age (in days)',
+            scope: this,
+            renderer: this._ageRenderer
+        },{
+            dataIndex: 'c_BlockerCategory',
+            text: 'Blocker Category'
+        },{
+            dataIndex: 'BlockerReason',
+            text: 'Blocked Reason'
+        },{
+            dataIndex: 'c_BlockerOwnerFirstLast',
+            text: 'Blocker Owner'
+        },{
+            dataIndex: 'Project',
+            text: 'Team'
+        },{
+            dataIndex: 'FormattedID',
+            text: 'User Story ID'
+        },{
+            dataIndex: 'Name',
+            text: 'User Story'
+        },{
+            dataIndex: 'Feature',
+            text: 'Feature'
+        },{
+            dataIndex: 'c_BlockerCreationDate',
+            text: 'Blocker Creation Date'
+        },{
+            dataIndex: 'Iteration',
+            text: 'Iteration'
+        },{
+            dataIndex: 'c_BlockerEstimatedResolutionDate',
+            text: 'Estimated Resolution Date'
+        },{
+            dataIndex: 'blockerCategoryOwner',
+            text: 'Category Owner'
+        }];
+    }
+});
+Ext.define('Rally.technicalservices.blockerview.Metrics', {
+    extend: 'Rally.technicalservices.blockerview',
+    alias: 'widget.tsblockerviewmetrics',
+
+    config: {
+        currentStore: null,
+        titleText: 'Category Pie Chart',
+        tooltipText: ''
+
+    },
+    constructor: function (config) {
+        this.mergeConfig(config);
+        this.callParent([this.config]);
+    },
+    showPanel: function(){
+        if (!this.down('#metrics-pie')) {
+
+            this.add({
+                xtype: 'rallychart',
+                itemId: 'metrics-pie',
+                loadMask: false,
+                chartConfig: {
+                    chart: {
+                        plotBackgroundColor: null,
+                        plotBorderWidth: null,
+                        plotShadow: false,
+                        type: 'pie'
+                    },
+                    title: {
+                        text: ''
+                    },
+                    tooltip: {
+                        pointFormat: '{series.name}: <b>{point.percentage:.1f}%</b><br/> {point.y} User Stories'
+                    },
+                    plotOptions: {
+                        pie: {
+                            allowPointSelect: true,
+                            cursor: 'pointer',
+                            dataLabels: {
+                                enabled: true,
+                                format: '<b>{point.name}</b>: {point.percentage:.1f}%'
+                            }
+                        }
+                    }
+                },
+                chartData: {
+                    series: [{
+                        name: "Categories",
+                        colorByPoint: true,
+                        data: this._getSeries(this.currentStore)
+                    }]
+                }
+            });
+
+            this.setHeight(600);
+
+        }
+    },
+    _getSeries: function(store){
+        var series = [],
+            noneText = "No Category",
+            category_count = {},
+            owners = {};
+        console.log('store',store);
+        store.clearFilter(false, true);
+        _.each(store.getRecords(), function(r){
+             var category = r.get('c_BlockerCategory') || noneText;
+            console.log('category',category);
+             category_count[category] = (category_count[category] || 0) + 1;
+             owners[category] = r.get('blockerCategoryOwner') || '';
+         }, this);
+
+        _.each(category_count, function(count, category){
+            var name = category;
+            if (owners[category].length > 0){
+                name =  category + ' [' + owners[category] + ']';
+            }
+            series.push({
+                name: name,
+                y: count
+            })
+        });
+        return series;
+
+    }
+});
+
+Ext.define('Rally.technicalservices.blockerview.MissingData', {
+    extend: 'Rally.technicalservices.blockerview',
+    alias: 'widget.tsblockerviewmissingdata',
+
+    config: {
+        currentStore: null,
+        id: 'grid-missing-data',
+        titleText: 'Missing Blocker Data ({0})',
+        tooltipText: 'Blockers with Missing Data'
+    },
+    constructor: function (config) {
+        this.mergeConfig(config);
+        this.callParent([this.config]);
+    },
+    showPanel: function(){
+        var grid = this.down('#grid-missing-data');
+        if (!grid) {
+            grid = this.renderPanel(this.currentStore, this.id, this.getColumnCfgs());
+        }
+        grid.getStore().clearFilter(false, true);
+        grid.getStore().filterBy(this._filterFn, this);
+    },
+    getResultCount: function(store){
+        var count = 0;
+        _.each(store.getRecords(), function(r){
+            if (this._filterFn(r)){
+                count++;
+            }
+        }, this);
+        return count;
+    },
+    _filterFn: function(item){
+
+        var blockerReason = item.get('BlockedReason') || '',
+            blockerCategory = item.get('c_BlockerCategory') || '',
+            blockerOwner = item.get('c_BlockerOwnerFirstLast') || '',
+            blockerCreationDate = item.get('c_BlockerCreationDate') || '';
+
+        if (blockerReason.length == 0 || blockerCategory.length == 0 || blockerOwner.length == 0 || blockerCreationDate == 0) {
+            return true;
+        }
+
+        return false;
+    },
+    getColumnCfgs: function(){
+        return [{
+            dataIndex: 'Project',
+            text: 'Team',
+            flex: 2
+        },{
+            dataIndex: 'FormattedID',
+            text: 'User Story ID',
+            flex: 1
+        },{
+            dataIndex: 'Name',
+            text: 'User Story',
+            flex: 3
+        },{
+            dataIndex: 'BlockedReason',
+            text: 'No Blocker Reason',
+            renderer: this._missingDataRenderer,
+            flex: 1
+        },{
+            dataIndex: 'c_BlockerCategory',
+            text: 'No Blocker Category',
+            renderer: this._missingDataRenderer,
+            flex: 1
+        },{
+           dataIndex: 'c_BlockerOwnerFirstLast',
+            text: 'No Blocker Owner',
+            renderer: this._missingDataRenderer,
+            flex: 1
+        },{
+            dataIndex: 'c_BlockerCreationDate',
+            text: 'No Blocker Creation Date',
+            renderer: this._missingDataRenderer,
+            flex: 1
+        }];
+    },
+    _missingDataRenderer: function(v,m){
+        m.style= "text-align:center;";
+        if (v){
+            return 0;
+        }
+        m.tdCls = 'flagged-10';
+        return 1;
+    }
+});
+
+Ext.define('Rally.technicalservices.blockerview.Team', {
+    extend: 'Rally.technicalservices.blockerview',
+    alias: 'widget.tsblockerviewteam',
+
+    config: {
+        currentStore: null,
+        id: 'grid-team',
+        titleText: 'Team View ({0})',
+        tooltipText: 'Blockers with Missing Data'
+
+    },
+    constructor: function (config) {
+        this.mergeConfig(config);
+        this.callParent([this.config]);
+        this.maxAge = this._getMaxAge(config.currentStore);
+    },
+    showPanel: function(){
+        var grid = this.down('#grid-team');
+        if (!grid) {
+            grid = this.renderPanel(this.currentStore, this.id, this.getColumnCfgs());
+        }
+        grid.getStore().clearFilter(false, true);
+        //age sorted decending
+    },
+    getColumnCfgs: function(){
+        return [{
+            dataIndex: 'age',
+            text: 'Age (in days)',
+            scope: this,
+            renderer: this._ageRenderer
+        },{
+            dataIndex: 'c_BlockerCategory',
+            text: 'Blocker Category'
+        },{
+            dataIndex: 'BlockedReason',
+            text: 'Blocker Reason'
+        },{
+            dataIndex: 'c_BlockerOwnerFirstLast',
+            text: 'Blocker Owner'
+        },{
+            dataIndex: 'Project',
+            text: 'Team'
+        },{
+            dataIndex: 'FormattedID',
+            text: 'User Story ID'
+        },{
+            dataIndex: 'Name',
+            text: 'User Story'
+        },{
+            dataIndex: 'Feature',
+            text: 'Feature'
+        },{
+            dataIndex: 'c_BlockerCreationDate',
+            text: 'Blocker Creation Date'
+        },{
+            dataIndex: 'Iteration',
+            text: 'Iteration'
+        },{
+            dataIndex: 'c_BlockerEstimatedResolutionDate',
+            text: 'Estimated Resolution Date'
+        }];
+    }
+});
+
+Ext.define('Rally.technicalservices.blockerview.Historical', {
+    extend: 'Rally.technicalservices.blockerview',
+    alias: 'widget.tsblockerviewhistorical',
+
+    config: {
+        currentStore: null,
+        id: 'grid-historical',
+        titleText: 'Historical Blocker Data ({0})',
+        tooltipText: ''
+
+    },
+    constructor: function (config) {
+        this.mergeConfig(config);
+        this.callParent([this.config]);
+    },
+    showPanel: function(){
+        var grid = this.down('#grid-current');
+        if (!grid) {
+            grid =  this.renderPanel(this.currentStore, this.id, this.getColumnCfgs());
+        }
+        grid.getStore().clearFilter(false, true);
+    },
+    getColumnCfgs: function(){
+        return ['FormattedID','Name'];
+    }
+});
+
+
+Ext.override(Rally.ui.gridboard.GridBoard,{
+    _getGridConfig: function() {
+        var context = this.getContext() || Rally.environment.getContext(),
+            config =  Ext.merge({
+                itemId: 'gridOrBoard',
+                xtype: 'rallytreegrid',
+                context: context,
+                enableRanking: false, //context.getWorkspace().WorkspaceConfiguration.DragDropRankingEnabled,
+                defaultSortToRank: true,
+                enableBlockedReasonPopover: true,
+                enableBulkEdit: false,
+                enableEditing: false,
+                enableScheduleStateClickable: false,
+                showRowActionsColumn: false,
+                stateId: this.stateId + '-grid',
+                stateful: true,
+                height: this.getAvailableGridBoardHeight()
+            }, this.gridConfig);
+
+        if (_.isEmpty(config.store)) {
+            Ext.Error.raise('No grid store configured');
+        }
+
+        if (this.useFilterCollection) {
+            config.filterCollection = this._getFilterCollection(this._getConfiguredFilters());
+        }
+
+        return config;
+    }
+});
+
+Ext.define('Rally.technicalservices.util.Utilities', {
+    singleton: true,
+    hashToArray: function(hash) {
+        var result = [];
+        for ( var key in hash ) {
+            result.push(hash[key]);
+        }
+        return result;
+    },
+    daysBetween: function(begin_date_js,end_date_js,skip_weekends){
+
+        if ( typeof(begin_date_js) == "string" ) {
+            begin_date_js = Rally.util.DateTime.fromIsoString(begin_date_js);
+        }
+        if ( typeof(end_date_js) == "string" ) {
+            end_date_js = Rally.util.DateTime.fromIsoString(end_date_js);
+        }
+
+        var dDate1 = Ext.clone(begin_date_js).setHours(0,0,0,0);
+        var dDate2 = Ext.clone(end_date_js).setHours(0,0,0,0);
+
+        if ( dDate1 == dDate2 ) { return 0; }
+        if (typeof dDate1 === "number") { dDate1 = new Date(dDate1); }
+        if (typeof dDate2 === "number") { dDate2 = new Date(dDate2); }
+
+        if ( !skip_weekends ) {
+            return Math.abs( Rally.util.DateTime.getDifference(dDate1,dDate2,'day') );
+        } else {
+            // shift to the following Monday
+            if (!this.isWeekday(dDate1)) {
+                dDate1 = this.shiftDateToMonday(dDate1);
+            }
+            if (!this.isWeekday(dDate2)) {
+                dDate2 = this.shiftDateToMonday(dDate2);
+            }
+
+
+            // from the sOverflow
+            var iWeeks, iDateDiff, iAdjust = 0;
+            if (dDate2 < dDate1)
+            {
+                var x = dDate2;
+                dDate2 = dDate1;
+                dDate1 = x;
+            }
+            var iWeekday1 = dDate1.getDay(); // day of week
+            var iWeekday2 = dDate2.getDay();
+            iWeekday1 = (iWeekday1 == 0) ? 7 : iWeekday1; // change Sunday from 0 to 7
+            iWeekday2 = (iWeekday2 == 0) ? 7 : iWeekday2;
+            if ((iWeekday1 > 5) && (iWeekday2 > 5)) iAdjust = 1; // adjustment if both days on weekend
+            iWeekday1 = (iWeekday1 > 5) ? 5 : iWeekday1; // only count weekdays
+            iWeekday2 = (iWeekday2 > 5) ? 5 : iWeekday2;
+
+            // calculate differnece in weeks (1000mS * 60sec * 60min * 24hrs * 7 days = 604800000)
+            iWeeks = Math.floor((dDate2.getTime() - dDate1.getTime()) / 604800000)
+
+            if (iWeekday1 <= iWeekday2) {
+                iDateDiff = (iWeeks * 5) + (iWeekday2 - iWeekday1)
+            } else {
+                iDateDiff = ((iWeeks + 1) * 5) - (iWeekday1 - iWeekday2)
+            }
+
+            iDateDiff -= iAdjust // take into account both days on weekend
+
+            if ( iDateDiff < 0 ) { iDateDiff = 0; }
+            return (iDateDiff);
+        }
+    },
+
+    isWeekday: function(check_date) {
+        var weekday = true;
+        var day = check_date.getDay();
+
+        if ( day === 0 || day === 6 ) {
+            weekday = false;
+        }
+        return weekday;
+    },
+    shiftDateToMonday: function(check_date) {
+        var day = check_date.getDay();
+
+        var delta = 0;
+
+        if ( day === 0 ) {
+            // it's Sunday
+            delta = 1;
+        }
+        if ( day === 6 ) {
+            delta = 2;
+        }
+
+        var shifted_date = check_date;
+        if ( delta > 0 ) {
+            shifted_date = new Date(check_date.setHours(0));
+            shifted_date = Rally.util.DateTime.add(shifted_date,"day",delta);
+        }
+        return shifted_date;
+    },
+    /*
+     * compress size is the point at which to move to weeks instead of days
+     */
+    arrayOfDaysBetween: function(begin_date_js, end_date_js, skip_weekends, compress_size ) {
+        var the_array = [];
+        if ( typeof(begin_date_js) == "string" ) {
+            begin_date_js = Rally.util.DateTime.fromIsoString(begin_date_js);
+        }
+        if ( typeof(end_date_js) == "string" ) {
+            end_date_js = Rally.util.DateTime.fromIsoString(end_date_js);
+        }
+        if ( begin_date_js > end_date_js ) {
+            var swap_holder = end_date_js;
+            end_date_js = begin_date_js;
+            begin_date_js = swap_holder;
+        }
+
+        var dDate1 = Ext.clone(begin_date_js).setHours(0,0,0,0);
+        var dDate2 = Ext.clone(end_date_js).setHours(0,0,0,0);
+
+        var number_of_days = this.daysBetween(begin_date_js,end_date_js,skip_weekends);
+
+        var add_value = 1;
+        var add_unit = 'day';
+
+        if ( Ext.isNumber(compress_size) && number_of_days > compress_size ) {
+            add_value = 7;
+        }
+
+        if ( number_of_days <= 2 ) {
+            add_value = 30;
+            add_unit = 'minute';
+            dDate2 = Ext.clone(end_date_js).setHours(23,59,0,0);
+        }
+
+
+        var check_date = new Date(dDate1);
+
+        while (check_date <= dDate2) {
+            if ( !skip_weekends || this.isWeekday(check_date) || add_value === 7 || add_unit == 'minute' ) {
+                the_array.push(check_date);
+            }
+            check_date = Rally.util.DateTime.add(check_date,add_unit,add_value);
+        }
+
+        return the_array;
+    }
+
+});
+
+Ext.define("blocker-multi-view", {
+    extend: 'Rally.app.TimeboxScopedApp',
+    scopeType: 'release',
+    componentCls: 'app',
+    logger: new Rally.technicalservices.Logger(),
+    defaults: { margin: 10 },
+
+    categoryLeaderMapping: {
+        "Architecture":	"Raj Shah",
+        "Environments (non-prod)": "Tom Francis",
+        "Licensing": "Bill Lo",
+        "Logical Build": "Jerry Branson",
+        "Physical Build":"Bill Lo",
+        "Resource Availability- Dev Ops":"Matt Price",
+        "Resource Availability- Engineering":"Omer Ansari, Raj Shah",
+        "Resource Availability- Other":"Diem Nguyen",
+        "Resource Availability- Product Owner":"Dave Lively, Jonathan Golding",
+        "No Lab Available":"Tom Francis",
+        "Testing":"Tom Francis",
+        "Other":"Diem Nguyen"
+    },
+    fetchList: ['Feature', 'FormattedID', 'Project','Release', 'Iteration', 'Tags', 'Blocked', 'BlockedReason', 'c_BlockerCategory',
+                'c_BlockerOwnerFirstLast', 'c_BlockerCreationDate', 'c_BlockerState','c_BlockerEstimatedResolutionDate','age','Name'],
+    onTimeboxScopeChange: function(scope) {
+        console.log('scope',scope);
+        if (this.down('#blocker-tabs')){
+            this.down('#blocker-tabs').destroy();
+        }
+        this._fetchData(scope.getRecord());
+    },
+    _fetchData: function(release_record){
+
+        var release_filter = {
+            property: 'Release',
+            value: ''
+        };
+
+        if (release_record){
+            release_filter = {
+                property: 'Release.Name',
+                value: release_record.get('Name')
+            };
+        }
+
+        Rally.technicalservices.BlockerModelBuilder.getModel('hierarchicalrequirement').then({
+            scope: this,
+            success: function(model){
+                var blocker_model = Rally.technicalservices.BlockerModelBuilder.build(model, this.categoryLeaderMapping);
+                var store = Ext.create('Rally.data.wsapi.Store',{
+                    model: blocker_model,
+                    filters: [{
+                        property: 'Blocked',
+                        value: true
+                    },{
+                        property: 'DirectChildrenCount',
+                        value: 0
+                    },release_filter],
+                    limit: 'Infinity',
+                    pageSize: 200,
+                    remoteSort: false,
+                    sortOnFilter: true,
+                    fetch: this.fetchList
+                });
+                store.load({
+                    scope: this,
+                    callback: function(records, operation, success){
+                        this.logger.log('load current store success', store, records, operation, success);
+                        this._addTabs(store);
+                    }
+                });
+            }
+        });
+    },
+    _addTabs: function(store){
+        var tabHeight = 50;
+
+        this.add({
+            xtype: 'tabpanel',
+            itemId: 'blocker-tabs',
+            layout: 'card',
+            listeners: {
+                scope: this,
+                tabchange: function(tp, newTab){
+                    console.log('change')
+                    newTab.showPanel();
+                },
+                afterrender: function(tp){
+                    var tab = tp.child('#leadership-view');
+                    //tp.setActiveTab(tab);
+                    tab.tab.show();
+                    tab.showPanel();
+                }
+            },
+            tabBar: {
+                height: tabHeight,
+                style: {
+                    backgroundColor: 'white'
+                }
+            },
+            items: [{
+                itemId: 'leadership-view',
+                xtype: 'tsblockerviewleadership',
+                currentStore: store,
+                context: this.getContext(),
+                tabConfig: {
+                    height: tabHeight
+                }
+            }, {
+                itemId: 'category-view',
+                xtype: 'tsblockerviewcategory',
+                currentStore: store,
+                context: this.getContext(),
+                tabConfig: {
+                    height: tabHeight
+
+                }
+            },{
+                itemId: 'team-view',
+                xtype: 'tsblockerviewteam',
+                currentStore: store,
+                context: this.getContext(),
+                tabConfig: {
+                    height: tabHeight
+                }
+            },{
+                itemId: 'category-metrics-view',
+                xtype: 'tsblockerviewmetrics',
+                currentStore: store,
+                tabConfig: {
+                    height: tabHeight
+                }
+            },{
+                itemId: 'missing-data-blocker-view',
+                xtype: 'tsblockerviewmissingdata',
+                currentStore: store,
+                context: this.getContext(),
+                tabConfig: {
+                    height: tabHeight
+                }
+            },{
+                itemId: 'current-blocker-view',
+                xtype: 'tsblockerviewcurrent',
+                currentStore: store,
+                context: this.getContext(),
+                tabConfig: {
+                    height: tabHeight
+                }
+            //},{
+            //    itemId: 'historical-blocker-view',
+            //    xtype: 'tsblockerviewhistorical',
+            //    currentStore: store,
+            //    context: this.getContext(),
+            //    tabConfig: {
+            //        title: 'Historical Blocker Data',
+            //        height: tabHeight,
+            //        tooltip: 'Historical view of blocker data'
+            //    }
+            }]
+        });
+    }
+});
+
+            
+               Rally.launchApp('blocker-multi-view', {
+                   name: 'Blocker Multi View'
+               });
+        });
+    </script>
+    
+    <style type="text/css">
+
+.app {
+}
+.tsinfolink {
+    position:absolute;
+    right:0px;
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    text-align: center;
+    color: white;
+    background: #C0C0C0;
+    border-style: solid;
+    border-width: 1px;
+    margin-top: 25px;
+    margin-right: 5px;
+    cursor: pointer;
+}
+.x-tab-active{
+    background-color: white!important;
+}
+.x-tab-bar .x-tab-default {
+    background-image: none;
+    background-color: #999;
+    border-color: #666;
+    border-radius: 0;
+}
+.x-tab-inner {
+    color: #222;
+    text-transform: none!important;
+    width: 150px!important;
+    font-size: 11px!important;
+    font-family: NotoSans, Helvetica, Arial;
+    white-space: normal;
+    word-wrap: break-word;
+
+}
+.flagged-10 {
+    background-color: #FF0000!important;
+}
+.flagged-9 {
+    background-color: #FF3300!important;
+}
+.flagged-8 {
+    background-color: #FF6600!important;
+}
+.flagged-7 {
+    background-color: #FF9900!important;
+}
+.flagged-6 {
+    background-color: #FFCC00!important;
+}
+.flagged-5 {
+    background-color: #FFFF00!important;
+}
+.flagged-4 {
+    background-color: #CCFF00!important;
+}
+.flagged-3 {
+    background-color: #99FF00!important;
+}
+.flagged-2 {
+    background-color: #66FF00!important;
+}
+.flagged-1 {
+    background-color: #33FF00!important;
+}
+.flagged-0 {
+    background-color: #00FF00!important;
+}
+
+    </style>
+
+</head>
+<body></body>
+</html>
