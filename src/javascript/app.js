@@ -19,17 +19,20 @@ Ext.define("blocker-multi-view", {
         "Testing":"Tom Francis",
         "Other":"Diem Nguyen"
     },
-    fetchList: ['Feature', 'FormattedID', 'Project','Release', 'Iteration', 'Tags', 'Blocked', 'BlockedReason', 'c_BlockerCategory',
-                'c_BlockerOwnerFirstLast', 'c_BlockerCreationDate', 'c_BlockerState','c_BlockerEstimatedResolutionDate','age','Name'],
+    fetchList: ['Feature', 'FormattedID', 'Project','Release', 'Iteration', 'Tags', 'Blocked', 
+                'BlockedReason', 'c_BlockerCategory', 'c_BlockerOwnerFirstLast', 'c_BlockerCreationDate', 
+                'c_BlockerState','c_BlockerEstimatedResolutionDate','age','Name','RevisionHistory',
+                'ObjectID','CreationDate'],
     onTimeboxScopeChange: function(scope) {
-        console.log('scope',scope);
         if (this.down('#blocker-tabs')){
             this.down('#blocker-tabs').destroy();
         }
         this._fetchData(scope.getRecord());
     },
     _fetchData: function(release_record){
-
+        var me = this;
+        this.setLoading(true);
+        
         var release_filter = {
             property: 'Release',
             value: ''
@@ -46,31 +49,62 @@ Ext.define("blocker-multi-view", {
             scope: this,
             success: function(model){
                 var blocker_model = Rally.technicalservices.BlockerModelBuilder.build(model, this.categoryLeaderMapping);
-                var store = Ext.create('Rally.data.wsapi.Store',{
-                    model: blocker_model,
-                    filters: [{
-                        property: 'Blocked',
-                        value: true
-                    },{
-                        property: 'DirectChildrenCount',
-                        value: 0
-                    },release_filter],
-                    limit: 'Infinity',
-                    pageSize: 200,
-                    remoteSort: false,
-                    sortOnFilter: true,
-                    fetch: this.fetchList
-                });
-                store.load({
+                
+                this._loadBlockers(blocker_model,release_filter).then({
                     scope: this,
-                    callback: function(records, operation, success){
-                        this.logger.log('load current store success', store, records, operation, success);
+                    success: function(store) {
                         this._addTabs(store);
+                    },
+                    failure: function(msg){
+                        Ext.Msg.alert(msg);
+                    }
+                }).always(function() { me.setLoading(false) } );
+            }
+        });
+    },
+    
+    _loadBlockers: function(blocker_model, release_filter) {
+        var deferred = Ext.create('Deft.Deferred');
+        var me = this;
+        
+        Ext.create('Rally.data.wsapi.Store',{
+            model: blocker_model,
+            filters: [{
+                property: 'Blocked',
+                value: true
+            },{
+                property: 'DirectChildrenCount',
+                value: 0
+            },release_filter],
+            limit: 'Infinity',
+            pageSize: 200,
+            remoteSort: false,
+            sortOnFilter: true,
+            fetch: this.fetchList
+        }).load({
+            callback: function(records, operation, success){
+                var store = this;
+                
+                var promises = [];
+                
+                Ext.Array.each(records, function(record) {
+                    promises.push(function() { return record.calculateAge(); });
+                });
+                
+                Deft.Chain.sequence(promises).then({
+                    success: function() { 
+                        deferred.resolve(store);
+                    },
+                    failure: function(msg) {
+                        deferred.reject(msg);
                     }
                 });
             }
         });
+        
+        return deferred.promise;
     },
+    
     _addTabs: function(store){
         var tabHeight = 50;
 
@@ -81,7 +115,6 @@ Ext.define("blocker-multi-view", {
             listeners: {
                 scope: this,
                 tabchange: function(tp, newTab){
-                    console.log('change')
                     newTab.showPanel();
                 },
                 afterrender: function(tp){
@@ -157,5 +190,24 @@ Ext.define("blocker-multi-view", {
             //    }
             }]
         });
+    },
+    
+    getOptions: function() {
+        return [
+            {
+                text: 'About...',
+                handler: this._launchInfo,
+                scope: this
+            }
+        ];
+    },
+    
+    _launchInfo: function() {
+        if ( this.about_dialog ) { this.about_dialog.destroy(); }
+        this.about_dialog = Ext.create('Rally.technicalservices.InfoLink',{});
+    },
+    
+    isExternal: function(){
+        return typeof(this.getAppId()) == 'undefined';
     }
 });

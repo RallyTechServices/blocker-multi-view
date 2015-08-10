@@ -22,20 +22,20 @@ Ext.define('Rally.technicalservices.blockerview.Leadership', {
         }
         grid.getStore().clearFilter(false, true);
         grid.getStore().sort([{
-            property: 'age',
+            property: '__Age',
             direction: 'DESC'
         }]);
         grid.getStore().filterBy(this._filterFn, this);
     },
 
     _filterFn: function(item){
-
-                return (item.get('blockerCategoryOwner') && item.get('age') && item.get('age') > 5);
+        return (item.get('blockerCategoryOwner') && item.get('__Age') && item.get('__Age') > 5);
     },
+    
     getColumnCfgs: function(){
 
         return [{
-            dataIndex: 'age',
+            dataIndex: '__Age',
             text: 'Age (in days)',
             scope: this,
             renderer: this._ageRenderer
@@ -61,7 +61,7 @@ Ext.define('Rally.technicalservices.blockerview.Leadership', {
             dataIndex: 'Feature',
             text: 'Feature'
         },{
-            dataIndex: 'c_BlockerCreationDate',
+            dataIndex: '__BlockerCreationDate',
             text: 'Blocker Creation Date'
         },{
             dataIndex: 'Iteration',

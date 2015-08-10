@@ -3,11 +3,11 @@
 <head>
     <title>Blocker Multi View</title>
     <!--  (c) 2015 Rally Software Development Corp.  All Rights Reserved. -->
-    <!--  Build Date: Fri Aug 07 2015 10:25:52 GMT-0600 (MDT) -->
+    <!--  Build Date: Fri Aug 07 2015 12:11:18 GMT-0700 (PDT) -->
     
     <script type="text/javascript">
-        var APP_BUILD_DATE = "Fri Aug 07 2015 10:25:52 GMT-0600 (MDT)";
-        var CHECKSUM = 24070828477;
+        var APP_BUILD_DATE = "Fri Aug 07 2015 12:11:18 GMT-0700 (PDT)";
+        var CHECKSUM = 30144127967;
     </script>
     
     <script type="text/javascript" src="/apps/2.0/sdk.js"></script>
@@ -20,7 +20,7 @@
  */
 
 Ext.define('Rally.technicalservices.InfoLink',{
-    extend: 'Ext.Component',
+    extend: 'Rally.ui.dialog.Dialog',
     alias: 'widget.tsinfolink',
     
     /**
@@ -35,19 +35,24 @@ Ext.define('Rally.technicalservices.InfoLink',{
      * cfg {String} title
      * The title for the dialog box
      */
-     title: "Build Information",
+    title: "Build Information",
     
-    renderTpl: "<div id='{id}-infolinkWrap' class='tsinfolink'>i</div>",
+    defaults: { padding: 5, margin: 5 },
 
+    closable: true,
+     
+    draggable: true,
+
+    autoShow: true,
+   
+    width: 350, 
+    
     initComponent: function() {
+        var id = Ext.id(this);
+        this.title =  "<span class='icon-help'> </span>" + this.title;
         this.callParent(arguments);
-       
     },
     
-    onRender: function() {
-        this.callParent(arguments);
-        this.mon(this.el,'click',this.onClick,this);
-    },
     _generateChecksum: function(string){
         var chk = 0x12345678,
             i;
@@ -60,8 +65,12 @@ Ext.define('Rally.technicalservices.InfoLink',{
     
         return chk;
     },
+    
     _checkChecksum: function(container) {
+        var deferred = Ext.create('Deft.Deferred');
+        console.log("_checkChecksum", container);
         var me = this;
+        
         Ext.Ajax.request({
             url: document.URL,
             params: {
@@ -72,48 +81,77 @@ Ext.define('Rally.technicalservices.InfoLink',{
                 if ( CHECKSUM ) {
                     if ( CHECKSUM !== me._generateChecksum(text) ) {
                         console.log("Checksums don't match!");
-                        if ( me.dialog ) {
-                            me.dialog.add({xtype:'container',html:'Checksums do not match'});
-                        }
+                        deferred.resolve(false);
+                        return;
                     }
                 }
+                deferred.resolve(true);
             }
         });
+        
+        return deferred.promise;
     },
-    onClick: function(e) {
-        var me = this;
-        this._checkChecksum(this);
+    
+    afterRender: function() {
+        var app = Rally.getApp();
         
-        var dialog_items = [];
-        
-        if ( this.informationHtml ) {
-            dialog_items.push({
+        if (! app.isExternal() ) {
+                
+            this._checkChecksum(app).then({
+                scope: this,
+                success: function(result){
+                    if ( !result ) {
+                        this.addDocked({
+                            xtype:'container',
+                            cls: 'build-info',
+                            padding: 2,
+                            html:'<span class="icon-warning"> </span>Checksums do not match'
+                        });
+                    }
+                },
+                failure: function(msg){
+                    console.log("oops:",msg);
+                }
+            });
+        } else {
+            this.addDocked({
                 xtype:'container',
+                cls: 'build-info',
+                padding: 2,
+                html:'... Running externally'
+            });
+        }
+        this.callParent(arguments);
+    },
+    
+    beforeRender: function() {
+        var me = this;
+        this.callParent(arguments);
+
+        if (this.informationHtml) {
+            this.addDocked({
+                xtype: 'component',
+                componentCls: 'intro-panel',
+                padding: 2,
                 html: this.informationHtml
             });
         }
-                
-        dialog_items.push({
+        
+        this.addDocked({
             xtype:'container',
+            cls: 'build-info',
+            padding: 2,
             html:"This app was created by the Rally Technical Services Team."
         });
         
         if ( APP_BUILD_DATE ) {
-            dialog_items.push({
+            this.addDocked({
                 xtype:'container',
+                cls: 'build-info',
+                padding: 2,
                 html:'Build date/time: ' + APP_BUILD_DATE
             });
         }
-        
-        if (this.dialog){this.dialog.destroy();}
-        this.dialog = Ext.create('Rally.ui.dialog.Dialog',{
-            defaults: { padding: 5, margin: 5 },
-            closable: true,
-            draggable: true,
-            title: me.title,
-            items: dialog_items
-        });
-        this.dialog.show();
     }
 });
 
@@ -152,19 +190,13 @@ Ext.define('Rally.technicalservices.BlockerModelBuilder',{
     },
     build: function(model, categoryLeaderMapping) {
 
+        var me = this;
+        
         return Ext.define('Rally.technicalservices.model.BlockerModel', {
             extend: model,
             fields: [{
-                name: 'age',
-                convert: function (value, record) {
-                    var creation_date = record.get('c_BlockerCreationDate'),
-                        age = null;
-
-                    if (creation_date) {
-                        age = Rally.technicalservices.util.Utilities.daysBetween(creation_date, new Date(), true);
-                    }
-                    return age;
-                },
+                name: '__Age',
+                defaultValue: -1,
                 displayName: 'Age (in Days)'
             },{
                 name: 'blockerCategoryOwner',
@@ -176,8 +208,88 @@ Ext.define('Rally.technicalservices.BlockerModelBuilder',{
                     return null;
                 },
                 displayName: 'Blocker Category Owner'
-            }]
+            },
+            {
+                name: '__BlockerCreationDate',
+                defaultValue: new Date,
+                displayName: 'Blocker Creation Date',
+                type: 'date'
+            }],
+            
+            calculateAge: me._calculateAge,
+            _loadRecordsWithAPromise: me._loadRecordsWithAPromise
         });
+    },
+    
+    _calculateAge: function() {
+        var deferred = Ext.create('Deft.Deferred');
+        
+        var revision_history = this.get('RevisionHistory');
+        var revision_history_oid = revision_history.ObjectID;
+        
+        var filters = [
+            { property:'RevisionHistory.ObjectID', value: revision_history_oid},
+            { property:'Description', operator: 'contains', value: 'BLOCKED changed from [false] to [true]'}
+        ];
+        var fields = ['CreationDate','Description'];
+        var sorters = [{property:'CreationDate', direction: 'DESC'}];
+        
+        //limit 1, pagesize 1 gives us just the last one
+        this._loadRecordsWithAPromise('Revision',fields,filters,sorters, {limit: 1, pageSize: 1}).then({
+            scope: this,
+            success: function(records) {
+                
+                var blocked_date = this.get('CreationDate'); // use creation date if no blocked date
+                
+                if ( records.length > 0 ) {
+                    blocked_date = records[0].get('CreationDate');
+                } else {
+                    // later might want to make sure this thing is blocked
+                    console.warn(this.get('FormattedID') +  ': No revision has "BLOCKED changed from [false] to [true]" in the description');
+                    deferred.resolve();
+                }
+                var today = new Date();
+                var age = Rally.technicalservices.util.Utilities.daysBetween(blocked_date, today, true);
+                
+                this.set('__Age',age);
+                this.set('__BlockerCreationDate', blocked_date);
+                deferred.resolve();
+            },
+            failure: function(msg) {
+                deferred.reject(msg);
+            }
+        });
+        
+        return deferred.promise;
+    },
+    
+    _loadRecordsWithAPromise: function(model_name, model_fields, filters, sorters, other_settings){
+        var deferred = Ext.create('Deft.Deferred');
+        var me = this;
+        
+        var settings = {
+            model: model_name,
+            fetch: model_fields,
+            filters:filters,
+            sorters:sorters,
+            limit:'Infinity'
+        };
+        
+        if (! Ext.isEmpty(other_settings) ){
+            settings = Ext.Object.merge(settings,other_settings);
+        }
+          
+        Ext.create('Rally.data.wsapi.Store', settings).load({
+            callback : function(records, operation, successful) {
+                if (successful){
+                    deferred.resolve(records);
+                } else {
+                    console.error("Failed: ", operation);
+                    deferred.reject('Problem loading: ' + operation.error.errors.join('. '));
+                }
+            }
+        });
+        return deferred.promise;
     }
 });
 
@@ -231,15 +343,16 @@ Ext.define('Rally.technicalservices.blockerview', {
     },
     _getMaxAge: function(store){
         var max_age = 0;
-        _.each(store.getRecords(), function(r){
-            if (r.get('age') && r.get('age') > max_age){
-                max_age = r.get('age');
+        _.each(store.getRecords(), function(r,idx){
+            if (r.get('__Age') && r.get('__Age') > max_age){
+                max_age = r.get('__Age');
             }
         });
         return max_age;
     },
     _ageRenderer: function(v, m){
         m.style="text-align:center;";
+        
         if (v){
             var n = Math.floor(v/this.maxAge * 10),
                 color_cls = 'flagged-' + n;
@@ -276,13 +389,12 @@ Ext.define('Rally.technicalservices.blockerview.Category', {
             property: 'c_BlockerCategory',
             direction: 'ASC'
         },{
-            property: 'age',
+            property: '__Age',
             direction: 'DESC'
         }]);
         grid.getStore().filterBy(this._filterFn, this);
     },
     _filterFn: function(item){
-        console.log('blocker category', item.get('c_BlockerCategory').length);
         return (item.get('c_BlockerCategory') && item.get('c_BlockerCategory').length > 0);
     },
     getColumnCfgs: function(){
@@ -311,10 +423,10 @@ Ext.define('Rally.technicalservices.blockerview.Category', {
             dataIndex: 'Feature',
             text: 'Feature'
         },{
-            dataIndex: 'c_BlockerCreationDate',
+            dataIndex: '__BlockerCreationDate',
             text: 'Blocker Creation Date'
         },{
-            dataIndex: 'age',
+            dataIndex: '__Age',
             text: 'Age (in days)',
             scope: this,
             renderer: this._ageRenderer
@@ -378,7 +490,7 @@ Ext.define('Rally.technicalservices.blockerview.Current', {
             dataIndex: 'c_BlockerOwnerFirstLast',
             text: 'Blocker Owner'
         },{
-            dataIndex: 'c_BlockerCreationDate',
+            dataIndex: '__BlockerCreationDate',
             text: 'Blocker Creation Date'
         },{
             dataIndex: 'c_BlockerState',
@@ -387,7 +499,7 @@ Ext.define('Rally.technicalservices.blockerview.Current', {
             dataIndex: 'c_BlockerEstimatedResolutionDate',
             text: 'Blocker Estimated Resolution Date'
         },{
-            dataIndex: 'age',
+            dataIndex: '__Age',
             text: 'Age (in days)'
         }];
     }
@@ -417,20 +529,20 @@ Ext.define('Rally.technicalservices.blockerview.Leadership', {
         }
         grid.getStore().clearFilter(false, true);
         grid.getStore().sort([{
-            property: 'age',
+            property: '__Age',
             direction: 'DESC'
         }]);
         grid.getStore().filterBy(this._filterFn, this);
     },
 
     _filterFn: function(item){
-
-                return (item.get('blockerCategoryOwner') && item.get('age') && item.get('age') > 5);
+        return (item.get('blockerCategoryOwner') && item.get('__Age') && item.get('__Age') > 5);
     },
+    
     getColumnCfgs: function(){
 
         return [{
-            dataIndex: 'age',
+            dataIndex: '__Age',
             text: 'Age (in days)',
             scope: this,
             renderer: this._ageRenderer
@@ -456,7 +568,7 @@ Ext.define('Rally.technicalservices.blockerview.Leadership', {
             dataIndex: 'Feature',
             text: 'Feature'
         },{
-            dataIndex: 'c_BlockerCreationDate',
+            dataIndex: '__BlockerCreationDate',
             text: 'Blocker Creation Date'
         },{
             dataIndex: 'Iteration',
@@ -533,11 +645,10 @@ Ext.define('Rally.technicalservices.blockerview.Metrics', {
             noneText = "No Category",
             category_count = {},
             owners = {};
-        console.log('store',store);
+
         store.clearFilter(false, true);
         _.each(store.getRecords(), function(r){
              var category = r.get('c_BlockerCategory') || noneText;
-            console.log('category',category);
              category_count[category] = (category_count[category] || 0) + 1;
              owners[category] = r.get('blockerCategoryOwner') || '';
          }, this);
@@ -592,10 +703,9 @@ Ext.define('Rally.technicalservices.blockerview.MissingData', {
 
         var blockerReason = item.get('BlockedReason') || '',
             blockerCategory = item.get('c_BlockerCategory') || '',
-            blockerOwner = item.get('c_BlockerOwnerFirstLast') || '',
-            blockerCreationDate = item.get('c_BlockerCreationDate') || '';
+            blockerOwner = item.get('c_BlockerOwnerFirstLast') || '';
 
-        if (blockerReason.length == 0 || blockerCategory.length == 0 || blockerOwner.length == 0 || blockerCreationDate == 0) {
+        if (blockerReason.length == 0 || blockerCategory.length == 0 || blockerOwner.length == 0 ) {
             return true;
         }
 
@@ -627,11 +737,6 @@ Ext.define('Rally.technicalservices.blockerview.MissingData', {
         },{
            dataIndex: 'c_BlockerOwnerFirstLast',
             text: 'No Blocker Owner',
-            renderer: this._missingDataRenderer,
-            flex: 1
-        },{
-            dataIndex: 'c_BlockerCreationDate',
-            text: 'No Blocker Creation Date',
             renderer: this._missingDataRenderer,
             flex: 1
         }];
@@ -672,7 +777,7 @@ Ext.define('Rally.technicalservices.blockerview.Team', {
     },
     getColumnCfgs: function(){
         return [{
-            dataIndex: 'age',
+            dataIndex: '__Age',
             text: 'Age (in days)',
             scope: this,
             renderer: this._ageRenderer
@@ -698,7 +803,7 @@ Ext.define('Rally.technicalservices.blockerview.Team', {
             dataIndex: 'Feature',
             text: 'Feature'
         },{
-            dataIndex: 'c_BlockerCreationDate',
+            dataIndex: '__BlockerCreationDate',
             text: 'Blocker Creation Date'
         },{
             dataIndex: 'Iteration',
@@ -938,17 +1043,20 @@ Ext.define("blocker-multi-view", {
         "Testing":"Tom Francis",
         "Other":"Diem Nguyen"
     },
-    fetchList: ['Feature', 'FormattedID', 'Project','Release', 'Iteration', 'Tags', 'Blocked', 'BlockedReason', 'c_BlockerCategory',
-                'c_BlockerOwnerFirstLast', 'c_BlockerCreationDate', 'c_BlockerState','c_BlockerEstimatedResolutionDate','age','Name'],
+    fetchList: ['Feature', 'FormattedID', 'Project','Release', 'Iteration', 'Tags', 'Blocked', 
+                'BlockedReason', 'c_BlockerCategory', 'c_BlockerOwnerFirstLast', 'c_BlockerCreationDate', 
+                'c_BlockerState','c_BlockerEstimatedResolutionDate','age','Name','RevisionHistory',
+                'ObjectID','CreationDate'],
     onTimeboxScopeChange: function(scope) {
-        console.log('scope',scope);
         if (this.down('#blocker-tabs')){
             this.down('#blocker-tabs').destroy();
         }
         this._fetchData(scope.getRecord());
     },
     _fetchData: function(release_record){
-
+        var me = this;
+        this.setLoading(true);
+        
         var release_filter = {
             property: 'Release',
             value: ''
@@ -965,31 +1073,62 @@ Ext.define("blocker-multi-view", {
             scope: this,
             success: function(model){
                 var blocker_model = Rally.technicalservices.BlockerModelBuilder.build(model, this.categoryLeaderMapping);
-                var store = Ext.create('Rally.data.wsapi.Store',{
-                    model: blocker_model,
-                    filters: [{
-                        property: 'Blocked',
-                        value: true
-                    },{
-                        property: 'DirectChildrenCount',
-                        value: 0
-                    },release_filter],
-                    limit: 'Infinity',
-                    pageSize: 200,
-                    remoteSort: false,
-                    sortOnFilter: true,
-                    fetch: this.fetchList
-                });
-                store.load({
+                
+                this._loadBlockers(blocker_model,release_filter).then({
                     scope: this,
-                    callback: function(records, operation, success){
-                        this.logger.log('load current store success', store, records, operation, success);
+                    success: function(store) {
                         this._addTabs(store);
+                    },
+                    failure: function(msg){
+                        Ext.Msg.alert(msg);
+                    }
+                }).always(function() { me.setLoading(false) } );
+            }
+        });
+    },
+    
+    _loadBlockers: function(blocker_model, release_filter) {
+        var deferred = Ext.create('Deft.Deferred');
+        var me = this;
+        
+        Ext.create('Rally.data.wsapi.Store',{
+            model: blocker_model,
+            filters: [{
+                property: 'Blocked',
+                value: true
+            },{
+                property: 'DirectChildrenCount',
+                value: 0
+            },release_filter],
+            limit: 'Infinity',
+            pageSize: 200,
+            remoteSort: false,
+            sortOnFilter: true,
+            fetch: this.fetchList
+        }).load({
+            callback: function(records, operation, success){
+                var store = this;
+                
+                var promises = [];
+                
+                Ext.Array.each(records, function(record) {
+                    promises.push(function() { return record.calculateAge(); });
+                });
+                
+                Deft.Chain.sequence(promises).then({
+                    success: function() { 
+                        deferred.resolve(store);
+                    },
+                    failure: function(msg) {
+                        deferred.reject(msg);
                     }
                 });
             }
         });
+        
+        return deferred.promise;
     },
+    
     _addTabs: function(store){
         var tabHeight = 50;
 
@@ -1000,7 +1139,6 @@ Ext.define("blocker-multi-view", {
             listeners: {
                 scope: this,
                 tabchange: function(tp, newTab){
-                    console.log('change')
                     newTab.showPanel();
                 },
                 afterrender: function(tp){
@@ -1076,6 +1214,25 @@ Ext.define("blocker-multi-view", {
             //    }
             }]
         });
+    },
+    
+    getOptions: function() {
+        return [
+            {
+                text: 'About...',
+                handler: this._launchInfo,
+                scope: this
+            }
+        ];
+    },
+    
+    _launchInfo: function() {
+        if ( this.about_dialog ) { this.about_dialog.destroy(); }
+        this.about_dialog = Ext.create('Rally.technicalservices.InfoLink',{});
+    },
+    
+    isExternal: function(){
+        return typeof(this.getAppId()) == 'undefined';
     }
 });
 

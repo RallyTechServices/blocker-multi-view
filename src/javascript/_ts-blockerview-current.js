@@ -55,7 +55,7 @@ Ext.define('Rally.technicalservices.blockerview.Current', {
             dataIndex: 'c_BlockerOwnerFirstLast',
             text: 'Blocker Owner'
         },{
-            dataIndex: 'c_BlockerCreationDate',
+            dataIndex: '__BlockerCreationDate',
             text: 'Blocker Creation Date'
         },{
             dataIndex: 'c_BlockerState',
@@ -64,7 +64,7 @@ Ext.define('Rally.technicalservices.blockerview.Current', {
             dataIndex: 'c_BlockerEstimatedResolutionDate',
             text: 'Blocker Estimated Resolution Date'
         },{
-            dataIndex: 'age',
+            dataIndex: '__Age',
             text: 'Age (in days)'
         }];
     }

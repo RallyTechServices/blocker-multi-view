@@ -33,10 +33,9 @@ Ext.define('Rally.technicalservices.blockerview.MissingData', {
 
         var blockerReason = item.get('BlockedReason') || '',
             blockerCategory = item.get('c_BlockerCategory') || '',
-            blockerOwner = item.get('c_BlockerOwnerFirstLast') || '',
-            blockerCreationDate = item.get('c_BlockerCreationDate') || '';
+            blockerOwner = item.get('c_BlockerOwnerFirstLast') || '';
 
-        if (blockerReason.length == 0 || blockerCategory.length == 0 || blockerOwner.length == 0 || blockerCreationDate == 0) {
+        if (blockerReason.length == 0 || blockerCategory.length == 0 || blockerOwner.length == 0 ) {
             return true;
         }
 
@@ -68,11 +67,6 @@ Ext.define('Rally.technicalservices.blockerview.MissingData', {
         },{
            dataIndex: 'c_BlockerOwnerFirstLast',
             text: 'No Blocker Owner',
-            renderer: this._missingDataRenderer,
-            flex: 1
-        },{
-            dataIndex: 'c_BlockerCreationDate',
-            text: 'No Blocker Creation Date',
             renderer: this._missingDataRenderer,
             flex: 1
         }];

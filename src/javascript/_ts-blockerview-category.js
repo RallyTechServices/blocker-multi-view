@@ -24,13 +24,12 @@ Ext.define('Rally.technicalservices.blockerview.Category', {
             property: 'c_BlockerCategory',
             direction: 'ASC'
         },{
-            property: 'age',
+            property: '__Age',
             direction: 'DESC'
         }]);
         grid.getStore().filterBy(this._filterFn, this);
     },
     _filterFn: function(item){
-        console.log('blocker category', item.get('c_BlockerCategory').length);
         return (item.get('c_BlockerCategory') && item.get('c_BlockerCategory').length > 0);
     },
     getColumnCfgs: function(){
@@ -59,10 +58,10 @@ Ext.define('Rally.technicalservices.blockerview.Category', {
             dataIndex: 'Feature',
             text: 'Feature'
         },{
-            dataIndex: 'c_BlockerCreationDate',
+            dataIndex: '__BlockerCreationDate',
             text: 'Blocker Creation Date'
         },{
-            dataIndex: 'age',
+            dataIndex: '__Age',
             text: 'Age (in days)',
             scope: this,
             renderer: this._ageRenderer

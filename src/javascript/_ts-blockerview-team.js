@@ -24,7 +24,7 @@ Ext.define('Rally.technicalservices.blockerview.Team', {
     },
     getColumnCfgs: function(){
         return [{
-            dataIndex: 'age',
+            dataIndex: '__Age',
             text: 'Age (in days)',
             scope: this,
             renderer: this._ageRenderer
@@ -50,7 +50,7 @@ Ext.define('Rally.technicalservices.blockerview.Team', {
             dataIndex: 'Feature',
             text: 'Feature'
         },{
-            dataIndex: 'c_BlockerCreationDate',
+            dataIndex: '__BlockerCreationDate',
             text: 'Blocker Creation Date'
         },{
             dataIndex: 'Iteration',

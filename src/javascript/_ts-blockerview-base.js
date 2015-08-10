@@ -48,15 +48,16 @@ Ext.define('Rally.technicalservices.blockerview', {
     },
     _getMaxAge: function(store){
         var max_age = 0;
-        _.each(store.getRecords(), function(r){
-            if (r.get('age') && r.get('age') > max_age){
-                max_age = r.get('age');
+        _.each(store.getRecords(), function(r,idx){
+            if (r.get('__Age') && r.get('__Age') > max_age){
+                max_age = r.get('__Age');
             }
         });
         return max_age;
     },
     _ageRenderer: function(v, m){
         m.style="text-align:center;";
+        
         if (v){
             var n = Math.floor(v/this.maxAge * 10),
                 color_cls = 'flagged-' + n;
